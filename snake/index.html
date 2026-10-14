@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snake</title>
+<style>
+  :root {
+    --bg: #f3efe6;
+    --panel: #fbf8f1;
+    --text: #1e2420;
+    --muted: #69706a;
+    --border: #d9d2c2;
+    --cell-a: #ece6d8;
+    --cell-b: #e6dfcf;
+    --snake: #2f7a4d;
+    --snake-head: #1c5133;
+    --food: #cf4a5a;
+    --overlay: rgba(251, 248, 241, 0.88);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141815;
+      --panel: #1b201c;
+      --text: #e8ece6;
+      --muted: #9aa39b;
+      --border: #2f3731;
+      --cell-a: #1f2621;
+      --cell-b: #1b211d;
+      --snake: #5cc489;
+      --snake-head: #9be3b8;
+      --food: #ff6f7f;
+      --overlay: rgba(20, 24, 21, 0.86);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  main { width: min(100%, 520px); }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  h1 { font-size: 1.5rem; margin: 0; letter-spacing: 0.02em; }
+  .stats { display: flex; gap: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stats b { color: var(--text); }
+  .board {
+    position: relative;
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--panel);
+    touch-action: none;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px;
+    text-align: center;
+    background: var(--overlay);
+    cursor: pointer;
+  }
+  .overlay[hidden] { display: none; }
+  .overlay strong { font-size: 1.4rem; }
+  .overlay span { color: var(--muted); }
+  .help { color: var(--muted); font-size: 0.875rem; margin: 12px 0 0; text-align: center; }
+  kbd {
+    font: inherit;
+    font-size: 0.8em;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+  }
+  .pad {
+    display: none;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(2, 56px);
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+  }
+  .pad button {
+    font: inherit;
+    font-size: 1.25rem;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    touch-action: manipulation;
+  }
+  .pad button:active { background: var(--cell-b); }
+  .pad [data-dir="up"] { grid-column: 2; grid-row: 1; }
+  .pad [data-dir="left"] { grid-column: 1; grid-row: 2; }
+  .pad [data-dir="down"] { grid-column: 2; grid-row: 2; }
+  .pad [data-dir="right"] { grid-column: 3; grid-row: 2; }
+  .scores { margin-top: 24px; }
+  .scores-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .scores h2 { font-size: 1.1rem; margin: 0; }
+  .scores-head button {
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 10px;
+    cursor: pointer;
+  }
+  .scores-head button[hidden] { display: none; }
+  .scores-note { color: var(--muted); font-size: 0.875rem; margin: 4px 0 8px; }
+  .scores-note[hidden] { display: none; }
+  .scores table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.95rem;
+  }
+  .scores table[hidden] { display: none; }
+  .scores th, .scores td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+  .scores th { color: var(--muted); font-weight: 500; font-size: 0.85rem; }
+  .scores td:first-child, .scores th:first-child { width: 2em; color: var(--muted); }
+  .scores tr.new td { background: var(--cell-b); font-weight: 600; }
+  @media (pointer: coarse) {
+    .pad { display: grid; }
+    .help .keys { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Snake</h1>
+    <div class="stats">
+      <span>Length <b id="length">10</b></span>
+      <span>Score <b id="score">0</b></span>
+      <span>Best <b id="best">0</b></span>
+    </div>
+  </header>
+
+  <div class="board" id="board">
+    <canvas id="canvas" aria-label="Snake game board"></canvas>
+    <div class="overlay" id="overlay">
+      <strong id="overlay-title">Snake</strong>
+      <span id="overlay-text">Each bite makes you shorter. Shrink to one segment to win. Press an arrow key or Space to start</span>
+    </div>
+  </div>
+
+  <div class="pad" aria-label="Direction buttons">
+    <button data-dir="up" aria-label="Up">▲</button>
+    <button data-dir="left" aria-label="Left">◀</button>
+    <button data-dir="down" aria-label="Down">▼</button>
+    <button data-dir="right" aria-label="Right">▶</button>
+  </div>
+
+  <p class="help">
+    Every bite makes the snake one segment shorter; get down to one segment to win.
+    Walls and your own body still end the game.<br>
+    <span class="keys"><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or <kbd>WASD</kbd> to steer,
+    <kbd>Space</kbd> to pause.</span>
+    Swipe on the board to steer on touch screens.
+  </p>
+
+  <section class="scores" aria-labelledby="scores-title">
+    <div class="scores-head">
+      <h2 id="scores-title">High scores</h2>
+      <button type="button" id="clear-scores" hidden>Clear</button>
+    </div>
+    <p class="scores-note">Top 10 by score, then by fastest time. Saved in this browser.</p>
+    <table id="scores-table" hidden>
+      <thead>
+        <tr><th>#</th><th>Score</th><th>Result</th><th>Time</th><th>Date</th></tr>
+      </thead>
+      <tbody id="scores-body"></tbody>
+    </table>
+    <p id="scores-empty" class="scores-note">No scores yet. Take a bite to get on the board.</p>
+    <p id="storage-note" class="scores-note" hidden>
+      This browser is blocking saved data, so scores will be lost when the page is closed.
+    </p>
+  </section>
+</main>
+
+<script id="snake-logic">
+// Game rules: pure functions with no DOM access, so they can be tested on their own
+// (tests/test_snake_logic.py loads this script by its id).
+const Snake = (() => {
+  const DIRS = {
+    up: { x: 0, y: -1 },
+    down: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+    right: { x: 1, y: 0 },
+  };
+  const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  const MAX_QUEUED_TURNS = 3;
+  const START_LENGTH = 10;
+
+  // Reverse snake: eating makes the snake one segment shorter, and it wins
+  // when it is down to a single segment.
+  function createGame({ cols = 20, rows = 20, rng = Math.random, length = START_LENGTH } = {}) {
+    const x = Math.floor(cols / 2);
+    const y = Math.floor(rows / 2);
+    // Lay the snake out leftwards from the centre, trimmed to fit the row.
+    const n = Math.max(2, Math.min(length, x + 1));
+    const snake = [];
+    for (let i = 0; i < n; i++) snake.push({ x: x - i, y });
+    const game = {
+      cols,
+      rows,
+      rng,
+      snake,
+      dir: 'right',
+      queue: [],
+      food: null,
+      score: 0,
+      status: 'ready', // ready | running | paused | over | won
+    };
+    game.food = placeFood(game);
+    return game;
+  }
+
+  function placeFood(game) {
+    const taken = new Set(game.snake.map((c) => c.x + ',' + c.y));
+    const free = [];
+    for (let y = 0; y < game.rows; y++) {
+      for (let x = 0; x < game.cols; x++) {
+        if (!taken.has(x + ',' + y)) free.push({ x, y });
+      }
+    }
+    if (free.length === 0) return null;
+    return free[Math.floor(game.rng() * free.length)];
+  }
+
+  // Queue a turn. Turns are queued so two quick key presses within one tick
+  // both count, and a turn straight back into the body is ignored.
+  function turn(game, dir) {
+    if (!DIRS[dir]) return false;
+    const last = game.queue.length ? game.queue[game.queue.length - 1] : game.dir;
+    if (dir === last || dir === OPPOSITE[last]) return false;
+    if (game.queue.length >= MAX_QUEUED_TURNS) return false;
+    game.queue.push(dir);
+    return true;
+  }
+
+  function step(game) {
+    if (game.status !== 'running') return game.status;
+    if (game.queue.length) game.dir = game.queue.shift();
+
+    const d = DIRS[game.dir];
+    const head = game.snake[0];
+    const next = { x: head.x + d.x, y: head.y + d.y };
+
+    if (next.x < 0 || next.y < 0 || next.x >= game.cols || next.y >= game.rows) {
+      game.status = 'over';
+      return game.status;
+    }
+
+    // The snake never grows, so the tail always moves out of the way this tick.
+    const body = game.snake.slice(0, -1);
+    if (body.some((c) => c.x === next.x && c.y === next.y)) {
+      game.status = 'over';
+      return game.status;
+    }
+
+    const eating = game.food !== null && next.x === game.food.x && next.y === game.food.y;
+    game.snake.unshift(next);
+    game.snake.pop();
+    if (eating) {
+      game.score += 1;
+      game.snake.pop(); // one segment shorter
+      if (game.snake.length === 1) {
+        game.status = 'won';
+        game.food = null;
+      } else {
+        game.food = placeFood(game);
+      }
+    }
+    return game.status;
+  }
+
+  // Milliseconds per move: starts at 140 and speeds up with each food, down to 60.
+  function tickMs(game) {
+    return Math.max(60, 140 - game.score * 3);
+  }
+
+  // High scores: entries are {score, length, timeMs, date}. Higher score ranks
+  // first; equal scores rank by faster time, then by who got there first.
+  const HIGH_SCORE_LIMIT = 10;
+
+  function compareScores(a, b) {
+    return b.score - a.score || a.timeMs - b.timeMs || a.date - b.date;
+  }
+
+  // Add a finished game to the table. Games with no bites are not recorded.
+  // Returns the new table and the entry's 1-based rank, or null if it didn't make it.
+  function addHighScore(table, entry, limit = HIGH_SCORE_LIMIT) {
+    if (!(entry.score > 0)) return { table, rank: null };
+    const next = [...table, entry].sort(compareScores).slice(0, limit);
+    const i = next.indexOf(entry);
+    return { table: next, rank: i === -1 ? null : i + 1 };
+  }
+
+  // Read a saved table, dropping anything malformed instead of failing.
+  function parseHighScores(text, limit = HIGH_SCORE_LIMIT) {
+    let data;
+    try { data = JSON.parse(text); } catch (e) { return []; }
+    if (!Array.isArray(data)) return [];
+    const isCount = (n) => Number.isInteger(n) && n >= 0;
+    return data
+      .filter((e) => e && isCount(e.score) && e.score > 0 && isCount(e.length) && e.length >= 1 &&
+        Number.isFinite(e.timeMs) && e.timeMs >= 0 && Number.isFinite(e.date))
+      .map((e) => ({ score: e.score, length: e.length, timeMs: e.timeMs, date: e.date }))
+      .sort(compareScores)
+      .slice(0, limit);
+  }
+
+  return {
+    DIRS, OPPOSITE, START_LENGTH, HIGH_SCORE_LIMIT,
+    createGame, placeFood, turn, step, tickMs,
+    compareScores, addHighScore, parseHighScores,
+  };
+})();
+</script>
+
+<script>
+// Browser front end: input, game loop and drawing.
+(() => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const board = document.getElementById('board');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlay-title');
+  const overlayText = document.getElementById('overlay-text');
+  const lengthEl = document.getElementById('length');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+
+  const scoresTable = document.getElementById('scores-table');
+  const scoresBody = document.getElementById('scores-body');
+  const scoresEmpty = document.getElementById('scores-empty');
+  const storageNote = document.getElementById('storage-note');
+  const clearButton = document.getElementById('clear-scores');
+
+  // High scores live in localStorage so they survive a reload. If the browser
+  // blocks storage, the table still works until the page is closed.
+  const SCORES_KEY = 'snake-high-scores';
+  let storageOk = true;
+  let highScores = [];
+  highScores = loadScores();
+  let lastRank = null; // rank of the game that just ended, to highlight it
+
+  let game = Snake.createGame();
+  let lastTime = null;
+  let acc = 0;
+  let elapsed = 0; // ms of actual play, not counting pauses
+  let colors = readColors();
+
+  // Hook for automated checks in tests/check_snake.py.
+  window.snakeApp = { get game() { return game; } };
+
+  function readColors() {
+    const s = getComputedStyle(document.documentElement);
+    const v = (name) => s.getPropertyValue(name).trim();
+    return {
+      cellA: v('--cell-a'), cellB: v('--cell-b'),
+      snake: v('--snake'), head: v('--snake-head'), food: v('--food'),
+    };
+  }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    colors = readColors();
+  });
+
+  function newGame() {
+    game = Snake.createGame();
+    acc = 0;
+    elapsed = 0;
+    lastRank = null;
+    updateHud();
+    renderScores();
+  }
+
+  function loadScores() {
+    try {
+      const scores = Snake.parseHighScores(localStorage.getItem(SCORES_KEY));
+      storageOk = true;
+      return scores;
+    } catch (e) {
+      storageOk = false;
+      return highScores;
+    }
+  }
+
+  function saveScores() {
+    try {
+      localStorage.setItem(SCORES_KEY, JSON.stringify(highScores));
+      storageOk = true;
+    } catch (e) {
+      storageOk = false;
+    }
+  }
+
+  function recordGame() {
+    const entry = {
+      score: game.score,
+      length: game.snake.length,
+      timeMs: Math.round(elapsed),
+      date: Date.now(),
+    };
+    // Re-read first so a game finished in another tab isn't overwritten.
+    const { table, rank } = Snake.addHighScore(loadScores(), entry);
+    highScores = table;
+    lastRank = rank;
+    if (rank !== null) saveScores();
+    renderScores();
+    updateHud();
+  }
+
+  function formatTime(ms) {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function renderScores() {
+    const rows = highScores.map((s, i) => {
+      const tr = document.createElement('tr');
+      if (i + 1 === lastRank) tr.className = 'new';
+      const cells = [
+        i + 1,
+        s.score,
+        s.length === 1 ? 'Won' : `Length ${s.length}`,
+        formatTime(s.timeMs),
+        new Date(s.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
+      ];
+      for (const value of cells) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.append(td);
+      }
+      return tr;
+    });
+    scoresBody.replaceChildren(...rows);
+    scoresTable.hidden = rows.length === 0;
+    clearButton.hidden = rows.length === 0;
+    scoresEmpty.hidden = rows.length > 0;
+    storageNote.hidden = storageOk;
+  }
+
+  clearButton.addEventListener('click', () => {
+    if (!confirm('Clear all high scores?')) return;
+    highScores = [];
+    lastRank = null;
+    try { localStorage.removeItem(SCORES_KEY); } catch (e) {}
+    renderScores();
+    updateHud();
+  });
+
+  // Keep the table in step with games finished in other tabs.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== SCORES_KEY && e.key !== null) return;
+    highScores = loadScores();
+    renderScores();
+    updateHud();
+  });
+
+  function start() {
+    if (game.status === 'over' || game.status === 'won') newGame();
+    game.status = 'running';
+    lastTime = null;
+    updateOverlay();
+  }
+
+  function togglePause() {
+    if (game.status === 'running') {
+      game.status = 'paused';
+      updateOverlay();
+    } else {
+      start();
+    }
+  }
+
+  function steer(dir) {
+    if (game.status === 'over' || game.status === 'won') return;
+    if (game.status === 'ready' || game.status === 'paused') start();
+    Snake.turn(game, dir);
+  }
+
+  function updateHud() {
+    lengthEl.textContent = game.snake.length;
+    scoreEl.textContent = game.score;
+    bestEl.textContent = Math.max(game.score, highScores.length ? highScores[0].score : 0);
+  }
+
+  function updateOverlay() {
+    const ranked = lastRank ? ` New high score: #${lastRank}!` : '';
+    const messages = {
+      ready: ['Snake', 'Each bite makes you shorter. Shrink to one segment to win. Press an arrow key or Space to start'],
+      paused: ['Paused', 'Press Space or tap to continue'],
+      over: ['Game over', `Length ${game.snake.length}.${ranked} Press Space or tap to play again`],
+      won: ['You won!', `Down to a single segment in ${formatTime(elapsed)}.${ranked} Press Space or tap to play again`],
+    };
+    const m = messages[game.status];
+    overlay.hidden = !m;
+    if (m) [overlayTitle.textContent, overlayText.textContent] = m;
+  }
+
+  // Keyboard
+  const KEY_DIRS = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    w: 'up', s: 'down', a: 'left', d: 'right',
+    W: 'up', S: 'down', A: 'left', D: 'right',
+  };
+  document.addEventListener('keydown', (e) => {
+    if (KEY_DIRS[e.key]) {
+      e.preventDefault();
+      steer(KEY_DIRS[e.key]);
+    } else if (e.key === ' ' || e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+      e.preventDefault();
+      if (e.key === 'Escape' && game.status !== 'running') return;
+      togglePause();
+    } else if (e.key === 'Enter' && game.status !== 'running') {
+      start();
+    }
+  });
+
+  overlay.addEventListener('click', () => {
+    if (game.status !== 'running') start();
+  });
+
+  // Touch: swipe on the board, or use the direction buttons.
+  let touchStart = null;
+  board.addEventListener('pointerdown', (e) => {
+    touchStart = { x: e.clientX, y: e.clientY };
+  });
+  board.addEventListener('pointerup', (e) => {
+    if (!touchStart) return;
+    const dx = e.clientX - touchStart.x;
+    const dy = e.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  });
+  document.querySelectorAll('.pad button').forEach((b) => {
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      steer(b.dataset.dir);
+    });
+  });
+
+  // Pause when the tab is hidden so the snake doesn't die unseen.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.status === 'running') togglePause();
+  });
+
+  // Drawing
+  function resize() {
+    const size = canvas.clientWidth;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+    ctx.setTransform(canvas.width / game.cols, 0, 0, canvas.height / game.rows, 0, 0);
+  }
+  new ResizeObserver(resize).observe(canvas);
+
+  function roundedCell(x, y, inset, radius) {
+    ctx.beginPath();
+    ctx.roundRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2, radius);
+    ctx.fill();
+  }
+
+  function draw() {
+    for (let y = 0; y < game.rows; y++) {
+      for (let x = 0; x < game.cols; x++) {
+        ctx.fillStyle = (x + y) % 2 ? colors.cellB : colors.cellA;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+
+    if (game.food) {
+      ctx.fillStyle = colors.food;
+      ctx.beginPath();
+      ctx.arc(game.food.x + 0.5, game.food.y + 0.5, 0.36, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (let i = game.snake.length - 1; i >= 0; i--) {
+      const c = game.snake[i];
+      ctx.fillStyle = i === 0 ? colors.head : colors.snake;
+      roundedCell(c.x, c.y, 0.06, 0.25);
+    }
+
+    // Eyes on the head, facing the direction of travel.
+    const head = game.snake[0];
+    const d = Snake.DIRS[game.dir];
+    ctx.fillStyle = colors.cellA;
+    for (const side of [-1, 1]) {
+      const ex = head.x + 0.5 + d.x * 0.18 + d.y * side * 0.2;
+      const ey = head.y + 0.5 + d.y * 0.18 + d.x * side * 0.2;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 0.08, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function frame(time) {
+    if (game.status === 'running') {
+      if (lastTime !== null) {
+        const dt = Math.min(time - lastTime, 250);
+        acc += dt;
+        elapsed += dt;
+      }
+      lastTime = time;
+      while (game.status === 'running' && acc >= Snake.tickMs(game)) {
+        acc -= Snake.tickMs(game);
+        const before = game.score;
+        Snake.step(game);
+        if (game.score !== before) updateHud();
+        if (game.status !== 'running') {
+          recordGame();
+          updateOverlay();
+        }
+      }
+    } else {
+      lastTime = null;
+      acc = 0;
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  updateHud();
+  renderScores();
+  updateOverlay();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
