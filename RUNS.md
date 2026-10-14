@@ -17,3 +17,4 @@ how the result was checked.
 | Write `AGENTS.md`, `CLAUDE.md`, `README.md`, `PLAN.md` and `RUNS.md` | `uv run hello.py` printed `hello` (the check listed in `README.md`) |
 | Replace the rules in `AGENTS.md` with the full list (tools before asking, record versions, don't weaken tests, ask before publishing) | `uv run hello.py` (uv 0.13.1) printed `hello`; `CLAUDE.md` still contains `@AGENTS.md` |
 | Commit and push the docs, showing what will be uploaded first | `uv run hello.py` printed `hello`; showed `git diff --stat origin/main..HEAD` and waited for approval before `git push` |
+| Add a `.gitignore` for Python/uv on macOS, commit and push it | `git status --short --ignored` showed `.venv/`, `.DS_Store`, `.Rhistory` and the caches as ignored; `uv run hello.py` printed `hello`; showed what would be pushed before `git push` |
